@@ -69,6 +69,7 @@
             user-select: none;
             cursor: pointer;
             position: relative;
+            margin-bottom: 10px;
         }
         ul li::before {
             content: '';
@@ -103,21 +104,20 @@
         ul li span:hover {
             background: #edeef0;
         }
+        .task-id {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="todo-app">
-            <h2>To-Do List <img src="images/icon.png"></h2>
+            <h2>To-Do List <img src="images/icon.png" alt="icon"></h2>
             <div class="row">
                 <input type="text" id="input-box" placeholder="Add your text">
                 <button onclick="addTask()">Add</button>
             </div>
-            <ul id="list-container">
-                <!-- <li class="checked">Task 1</li>
-                <li>Task 2</li>
-                <li>Task 3</li> -->
-            </ul>
+            <ul id="list-container"></ul>
         </div>    
     </div>
 
@@ -125,40 +125,125 @@
         const inputBox = document.getElementById("input-box");
         const listContainer = document.getElementById("list-container");
 
+        // Function to add a task
         function addTask() {
-            if (inputBox.value === '') {
+            const task = inputBox.value.trim();
+
+            if (task === '') {
                 alert("You must write something first!");
             } else {
-                let li = document.createElement("li");
-                li.innerHTML = inputBox.value;
-                listContainer.appendChild(li);
-                let span = document.createElement("span");
-                span.innerHTML = "\u00d7";
-                li.appendChild(span);
+                fetch('/add_task', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ task: task })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message) {
+                        console.log(data.message);
+                        inputBox.value = '';
+                        loadTasks();  // Reload tasks after adding a new one
+                    } else if (data.error) {
+                        console.error('Error:', data.error);
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
             }
-            inputBox.value = "";
-            saveData();
+        }
+        
+    // Function to delete a task by task_id
+        function deleteTask(taskName) {
+            fetch('/delete_task', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ task: taskName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    console.log(data.message);
+                    loadTasks();  // Reload tasks after deletion
+                } else if (data.error) {
+                    console.error('Error:', data.error);
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
 
-        listContainer.addEventListener("click", function(e) {
-            if (e.target.tagName === "LI") {
-                e.target.classList.toggle("checked");
-                saveData();
-            } else if (e.target.tagName === "SPAN") {
-                e.target.parentElement.remove();
-                saveData();
+    
+        listContainer.addEventListener("click", function (e) {
+            if (e.target.tagName === "SPAN") {
+                // Extract the task name by removing the '✕' and any text containing "ID:"
+                const taskName = e.target.parentElement.textContent.replace(/\s*ID:.*/, '').replace("\u00d7", "").trim();
+                deleteTask(taskName);
             }
         }, false);
 
-        function saveData() {
-            localStorage.setItem("data", listContainer.innerHTML);
+        listContainer.addEventListener("click", function (e) {
+            if (e.target.tagName === "LI") {
+                // Toggle the checked class
+                e.target.classList.toggle("checked");
+        
+                // Get the task name and the updated checked status
+                const taskName = e.target.textContent.replace(/\s*ID:.*/, '').replace("\u00d7", "").trim();
+                const isChecked = e.target.classList.contains("checked");
+        
+                // Send the task update to the backend
+                fetch('/update_task_status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ task: taskName, checked: isChecked })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data.message);
+                })
+                .catch(error => console.error('Error:', error));
+            } else if (e.target.tagName === "SPAN") {
+                // Delete the task when the ✕ icon is clicked
+                const taskName = e.target.parentElement.textContent.replace(/\s*ID:.*/, '').replace("\u00d7", "").trim();
+                deleteTask(taskName);
+            }
+        }, false);
+
+
+        // Function to load tasks from the Flask API
+        function loadTasks() {
+            fetch('/get_tasks')
+                .then(response => response.json())
+                .then(tasks => {
+                    listContainer.innerHTML = '';
+                    tasks.forEach(taskItem => {
+                        let li = document.createElement("li");
+                        li.innerHTML = `${taskItem.task} <span class="task-id">ID: ${taskItem.task_id}</span>`;
+                        
+                        if (taskItem.checked) {
+                            li.classList.add("checked");
+                        }
+
+                        let span = document.createElement("span");
+                        span.innerHTML = "\u00d7";
+                        li.appendChild(span);
+                        listContainer.appendChild(li);
+                    });
+                })
+                .catch(error => console.error('Error loading tasks:', error));
         }
 
-        function showTask() {
-            listContainer.innerHTML = localStorage.getItem("data");
-        }
-
-        showTask();
+        // Load tasks when the page loads
+        loadTasks();
     </script>
 </body>
 </html>
